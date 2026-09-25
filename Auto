@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# RouteAI Auto Start — mobile-friendly
+cd ~/routeai || exit 1
+
+echo "══════════════════════════════════"
+echo "  RouteAI Auto Start"
+echo "══════════════════════════════════"
+
+# 1. ตรวจ .env
+if ! grep -q "^DEEPSEEK_API_KEY=sk-" .env 2>/dev/null; then
+  echo "▶ ยังไม่มี DEEPSEEK_API_KEY จริง"
+  read -sp "Paste key (sk-...): " K
+  echo ""
+  if [[ "$K" != sk-* ]]; then
+    echo "❌ key ต้องขึ้นต้นด้วย sk-"
+    exit 1
+  fi
+  printf "DEEPSEEK_API_KEY=%s\n" "$K" > .env
+  chmod 600 .env
+  echo "✅ .env saved"
+else
+  echo "✅ .env พร้อม"
+fi
+
+# 2. ปิด server เก่า
+pkill -f "uvicorn main:app" 2>/dev/null
+sleep 1
+
+# 3. venv + deps
+if [ ! -d ".venv" ]; then
+  python3 -m venv .venv
+fi
+source .venv/bin/activate
+pip install -q -r requirements.txt
+
+# 4. รัน
+echo ""
+echo "══════════════════════════════════"
+echo "  ✅ READY"
+echo "  Test: curl localhost:8000/v1/health"
+echo "  Stop: Ctrl+C"
+echo "══════════════════════════════════"
+echo ""
+exec uvicorn main:app --host 0.0.0.0 --port 8000
