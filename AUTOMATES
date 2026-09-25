@@ -1,0 +1,116 @@
+<TaskerData sr="" version="5.14.6">
+    <Task sr="task_github_flow">
+        <cdate>1771142400000</cdate>
+        <edate>1771142400000</edate>
+        <id>999</id>
+        <nme>Automate_And_Commit_To_GitHub</nme>
+        
+        <!-- STEP 1: DEFINE CONFIGURATION VARIABLES -->
+        <Action sr="act0" ve="7">
+            <code>547</code>
+            <Str sr="arg0">%gh_token%</Str>
+            <Str sr="arg1">YOUR_GITHUB_PERSONAL_ACCESS_TOKEN</Str>
+        </Action>
+        <Action sr="act1" ve="7">
+            <code>547</code>
+            <Str sr="arg0">%gh_repo%</Str>
+            <Str sr="arg1">YOUR_USERNAME/YOUR_REPOSITORY</Str>
+        </Action>
+        <Action sr="act2" ve="7">
+            <code>547</code>
+            <Str sr="arg0">%gh_file_path%</Str>
+            <Str sr="arg1">scraped_data.txt</Str>
+        </Action>
+        
+        <!-- STEP 2: LAUNCH TARGET APP -->
+        <Action sr="act3" ve="7">
+            <code>20</code>
+            <AppData sr="arg0">
+                <appClass>com.google.android.apps.searchlite.MainActivity</appClass>
+                <appPkg>com.google.android.googlequicksearchbox</appPkg>
+            </AppData>
+        </Action>
+        <Action sr="act4" ve="7">
+            <code>30</code>
+            <Int sr="arg0" val="0"/>
+            <Int sr="arg1" val="2"/>
+            <Int sr="arg2" val="0"/>
+            <Int sr="arg3" val="0"/>
+            <Int sr="arg4" val="0"/>
+        </Action>
+
+        <!-- STEP 3: AUTOINPUT - CLICK SEARCH BAR -->
+        <Action sr="act5" ve="7">
+            <code>1935820400</code>
+            <Bundle sr="arg0">
+                <Vals sr="val">
+                    <com.twofortyfouram.locale.intent.extra.BLURB>Type 'Tasker Automation' into Search</com.twofortyfouram.locale.intent.extra.BLURB>
+                    <action_type>Write</action_type>
+                    <text_to_write>Tasker Automation</text_to_write>
+                </Vals>
+            </Bundle>
+            <Str sr="arg1">com.joaomgcd.autoinput</Str>
+            <Str sr="arg2">com.joaomgcd.autoinput.activity.ActivityConfigAction</Str>
+        </Action>
+
+        <!-- STEP 4: AUTOINPUT - SCROLL DOWN -->
+        <Action sr="act6" ve="7">
+            <code>1935820401</code>
+            <Bundle sr="arg0">
+                <Vals sr="val">
+                    <com.twofortyfouram.locale.intent.extra.BLURB>Swipe Down</com.twofortyfouram.locale.intent.extra.BLURB>
+                    <gesture_type>Swipe</gesture_type>
+                    <start_point>50,80</start_point>
+                    <end_point>50,20</end_point>
+                    <duration>500</duration>
+                </Vals>
+            </Bundle>
+            <Str sr="arg1">com.joaomgcd.autoinput</Str>
+            <Str sr="arg2">com.joaomgcd.autoinput.activity.ActivityConfigGestures</Str>
+        </Action>
+
+        <!-- STEP 5: AUTOINPUT - UI QUERY (EXTRACT SCREEN TEXT) -->
+        <Action sr="act7" ve="7">
+            <code>1935820402</code>
+            <Bundle sr="arg0">
+                <Vals sr="val">
+                    <com.twofortyfouram.locale.intent.extra.BLURB>UI Query Screen Content</com.twofortyfouram.locale.intent.extra.BLURB>
+                </Vals>
+            </Bundle>
+            <Str sr="arg1">com.joaomgcd.autoinput</Str>
+            <Str sr="arg2">com.joaomgcd.autoinput.activity.ActivityConfigUIQuery</Str>
+        </Action>
+
+        <!-- STEP 6: ENCODE EXTRACTED TEXT TO BASE64 (POWERED BY JAVASCRIPT) -->
+        <Action sr="act8" ve="7">
+            <code>129</code>
+            <Str sr="arg0">
+var textToEncode = global('%aitext()') || "No screen text captured";
+var encodedContent = btoa(unescape(encodeURIComponent(textToEncode)));
+setLocal('b64_content', encodedContent);
+            </Str>
+        </Action>
+
+        <!-- STEP 7: COMMIT FILE DIRECTLY TO GITHUB VIA REST API -->
+        <Action sr="act9" ve="7">
+            <code>339</code>
+            <Int sr="arg0" val="1"/>
+            <Str sr="arg1">https://api.github.com/repos/%gh_repo%/contents/%gh_file_path%</Str>
+            <Str sr="arg2">Authorization:Bearer %gh_token%
+User-Agent:Tasker-Mobile-Automator
+Content-Type:application/json</Str>
+            <Str sr="arg3">{"message": "Automated commit from Tasker AutoInput", "content": "%b64_content%"}</Str>
+            <Str sr="arg4"/>
+            <Int sr="arg5" val="10"/>
+            <Str sr="arg6"/>
+            <Str sr="arg7"/>
+        </Action>
+
+        <!-- STEP 8: NOTIFY USER OF COMPLETION -->
+        <Action sr="act10" ve="7">
+            <code>523</code>
+            <Str sr="arg0">Tasker GitHub Automation</Str>
+            <Str sr="arg1">Successfully committed screen data to %gh_repo%!</Str>
+        </Action>
+    </Task>
+</TaskerData>
