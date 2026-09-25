@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""Drug Discovery Trial — Full Pipeline."""
+import json, sys, hashlib, random
+from datetime import datetime
+from pathlib import Path
+
+DISEASES = {
+    "type 2 diabetes": {
+        "targets": [
+            {"name": "GLP-1R", "validation": 0.95,
+             "scaffolds": ["peptide_mimetic", "dual_agonist"]},
+            {"name": "SGLT2", "validation": 0.92,
+             "scaffolds": ["C_glucoside", "O_glucoside"]},
+            {"name": "DPP-4", "validation": 0.90,
+             "scaffolds": ["gliptin_warhead"]},
+        ],
+        "indication": "metabolic",
+        "market": 50_000_000_000,
+    },
+    "cancer - lung": {
+        "targets": [
+            {"name": "EGFR", "validation": 0.95,
+             "scaffolds": ["anilinoquinazoline", "covalent_acrylamide"]},
+            {"name": "KRAS G12C", "validation": 0.90,
+             "scaffolds": ["covalent_acrylamide"]},
+        ],
+        "indication": "oncology",
+        "market": 25_000_000_000,
+    },
+}
+
+CRITERIA = [
+    ("target_affinity", "bio", 0.15, "higher"),
+    ("selectivity_index", "bio", 0.10, "higher"),
+    ("herg_risk", "admet", 0.12, "lower"),
+    ("hepatotox_risk", "admet", 0.10, "lower"),
+    ("ip_freedom", "ip", 0.10, "higher"),
+    ("oral_bioavailability", "admet", 0.08, "higher"),
+    ("regulatory_path", "reg", 0.08, "higher"),
+    ("synthesis_complexity", "chem", 0.06, "lower"),
+    ("cyp_inhibition", "admet", 0.06, "lower"),
+    ("half_life_hours", "admet", 0.05, "higher"),
+    ("manufacturing_cost", "mfg", 0.05, "lower"),
+    ("clinical_precedent", "clin", 0.05, "higher"),
+]
+
+
+def gen(disease, n=3):
+    info = DISEASES[disease]
+    out = []
+    for t in info["targets"]:
+        for i in range(n):
+            scaf = t["scaffolds"][i % len(t["scaffolds"])]
+            h = hashlib.sha256(
+                f"{disease}|{t['name']}|{scaf}|{i}".encode()
+            ).hexdigest()
+            r = random.Random(int(h[:8], 16))
+            out.append({
+                "id": h[:12],
+                "name": f"{t['name']}-{i+1:02d}",
+                "target": t["name"],
+                "scaffold": scaf,
+                "affinity": round(r.uniform(0.4, 0.98) * t["validation"], 3),
+                "sel": round(r.uniform(0.3, 0.95), 3),
+                "mw": round(r.uniform(250, 620), 1),
+                "logp": round(r.uniform(0.3, 5.8), 2),
+                "hbd": r.randint(0, 6),
+                "hba": r.randint(2, 12),
+                "tpsa": round(r.uniform(40, 160), 1),
+                "rot": r.randint(2, 14),
+                "syn": round(r.uniform(0.2, 0.95), 3),
+                "oral": round(r.uniform(0.2, 0.95), 3),
+                "halflife": round(r.uniform(1, 72), 1),
+                "herg": round(r.uniform(0.05, 0.85), 3),
+                "hep": round(r.uniform(0.05, 0.8), 3),
+                "cyp": round(r.uniform(0.05, 0.9), 3),
+                "ip": round(r.uniform(0.1, 0.95), 3),
+                "reg": round(r.uniform(0.3, 0.95), 3),
+                "cost": round(r.uniform(5, 500), 1),
+                "prec": round(r.uniform(0.1, 0.95), 3),
+            })
+    return out
+
+
+def score(c):
+    total = 0.0
+    bd = {}
+    for name, dom, w, d in CRITERIA:
+        key = {"target_affinity": "affinity",
+               "selectivity_index": "sel",
+               "herg_risk": "herg",
+               "hepatotox_risk": "hep",
+               "ip_freedom": "ip",
+               "oral_bioavailability": "oral",
+               "regulatory_path": "reg",
+               "synthesis_complexity": "syn",
+               "cyp_inhibition": "cyp",
+               "half_life_hours": "halflife",
+               "manufacturing_cost": "cost",
+               "clinical_precedent": "prec"}[name]
+        raw = c.get(key, 0)
+        if name == "half_life_hours":
+            raw = min(raw / 24.0, 1.0)
+        if name == "manufacturing_cost":
+            raw = min(raw / 500.0, 1.0)
+        norm = raw if d == "higher" else 1.0 - raw
+        norm = max(0.0, min(1.0, norm))
+        contrib = norm * w
+        total += contrib
+        bd[name] = round(contrib, 4)
+    return round(total, 4), bd
+
+
+def reg_check(c):
+    issues = []
+    if c["mw"] > 500: issues.append("MW>500")
+    if c["logp"] > 5: issues.append("logP>5")
+    if c["hbd"] > 5: issues.append("HBD>5")
+    if c["hba"] > 10: issues.append("HBA>10")
+    if c["rot"] > 10: issues.append("rotBonds>10")
+    if len(issues) == 0: return "PASS", []
+    if len(issues) <= 2: return "REVIEW", issues
+    return "FAIL", issues
+
+
+def monte_carlo(c, market, n=2000):
+    seed = int(c["id"][:8], 16)
+    r = random.Random(seed)
+    p = (c["affinity"]*0.3 + c["sel"]*0.15 + c["oral"]*0.15 +
+         (1-c["herg"])*0.15 + (1-c["hep"])*0.15 + c["ip"]*0.10) * 0.7
+    dev = 50_000_000
+    peak = market * 0.05 * c["affinity"]
+    outs = []
+    for _ in range(n):
+        pp = max(0, min(0.95, r.gauss(p, 0.1)))
+        if r.random() < pp:
+            outs.append(r.gauss(peak, peak*0.3) - dev)
+        else:
+            outs.append(-dev)
+    outs.sort()
+    return {
+        "p_success": round(sum(1 for o in outs if o > 0) / n, 3),
+        "npv": round(sum(outs)/n, 0),
+        "ci_05": round(outs[int(n*0.05)], 0),
+        "ci_95": round(outs[int(n*0.95)], 0),
+    }
+
+
+def run(disease, top_k=5):
+    info = DISEASES[disease]
+    print(f"\n{'='*60}")
+    print(f"  TRIAL: {disease.upper()}")
+    print(f"{'='*60}\n")
+
+    cands = gen(disease)
+    print(f"[1/4] Generated {len(cands)} candidates")
+
+    for c in cands:
+        c["score"], c["breakdown"] = score(c)
+    print(f"[2/4] Scored by 12 criteria")
+
+    for c in cands:
+        st, iss = reg_check(c)
+        c["reg_status"] = st
+        c["reg_issues"] = iss
+    print(f"[3/4] Regulatory check done")
+
+    for c in cands:
+        c["mc"] = monte_carlo(c, info["market"])
+    print(f"[4/4] Monte Carlo done\n")
+
+    def final(c): return c["score"] * c["mc"]["p_success"]
+
+    ranked = sorted(cands, key=final, reverse=True)
+    print(f"{'='*60}")
+    print(f"  TOP {top_k}")
+    print(f"{'='*60}\n")
+    for i, c in enumerate(ranked[:top_k], 1):
+        print(f"#{i} {c['name']} → {c['target']} ({c['scaffold']})")
+        print(f"   Score: {c['score']:.3f}  P(success): {c['mc']['p_success']}")
+        print(f"   Regulatory: {c['reg_status']}")
+        print(f"   NPV: ${c['mc']['npv']:,.0f}")
+        print(f"   Final: {final(c):.4f}\n")
+
+    return {"disease": disease, "top": ranked[:top_k]}
+
+
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: python trial.py run <disease>")
+        print(f"Diseases: {', '.join(DISEASES.keys())}")
+        return
+    if sys.argv[1] == "run":
+        run(sys.argv[2], top_k=5)
+
+
+if __name__ == "__main__":
+    main()
